@@ -96,13 +96,13 @@ def login(cluster):
         password = getpass(cluster.capitalize() + "Password: ")
     
     logging.info('Login credentials defined for {} - {}'.format(cluster_address, username))
-
+    
     try:
         rc = RestClient(cluster_address, port)
         rc.login(username, password)
         print ("Connection established with " + cluster_address)
         logging.info('Connection established with {}'.format(cluster_address))
-
+        
         return (rc)
 
     except Exception as excpt:
@@ -110,14 +110,13 @@ def login(cluster):
         print("Error connecting to %s cluster: %s" % cluster_address, excpt)
         print(__doc__)
         sys.exit(1)
-
+        
 def quota_list(rc):
     quotas=list(rc.quota.get_all_quotas_with_status(page_size=1000))[0]['quotas']
     quota_json_file = open('quotas.json', 'w')
     json.dump(quotas, quota_json_file, indent=4)
     quota_json_file.close()
-      
-
+    
 def quota_define(rc, approve):
     approve = False
     quota_json_file = open('quotas.json','r')
@@ -128,44 +127,44 @@ def quota_define(rc, approve):
     for x in range(len(quotas)):
         fs_path = quotas[x]['path']
         limit = quotas[x]['limit']
-        file_id = rc.fs.get_file_attr(fs_path)['id']
-
-        try:
-            rc.quota.get_quota(file_id)
-            print ("Quota for "+ fs_path + " is already defined... ")
-            logging.info('{} quota is already defined.'.format(fs_path))
-            if approve == False:
-                update_confirm = input("Do you want to update "+ fs_path +" directory quota?: [Y/n]")
-            else:
-                update_confirm = "Y"
-                print("Directory quota for " + fs_path + " is being updated...")
-                logging.info('Directory quota for {} was updated succesfully.'.format(fs_path))
-        
-            if update_confirm == "y" or update_confirm == "Y" or update_confirm == "Yes" or update_confirm == "yes":
-                rc.quota.update_quota(file_id, limit)
-            else:
-                print("Directory quota for " + fs_path + " wasn't updated...")
-                logging.info('Directory quota for {} wasn\'t updated.'.format(fs_path))
-        except: 
+        try: 
+            file_id = rc.fs.get_file_attr(fs_path)['id']
             try:
+                rc.quota.get_quota(file_id)
+                print ("Quota for "+ fs_path + " is already defined... ")
+                logging.info('{} quota is already defined.'.format(fs_path))
                 if approve == False:
-                    create_confirm = input("Do you want to create "+ fs_path +" directory quota?: [Y/n]")
+                    update_confirm = input("Do you want to update "+ fs_path +" directory quota?: [Y/n]")
                 else:
-                    create_confirm = "Y"
-                    print("Directory quota for " + fs_path + " is being created...")
+                    update_confirm = "Y"
+                    print("Directory quota for " + fs_path + " is being updated...")
+                    logging.info('Directory quota for {} was updated succesfully.'.format(fs_path))
             
-                if create_confirm == "y" or create_confirm == "Y" or create_confirm == "Yes" or create_confirm == "yes": 
-                    rc.quota.create_quota(file_id, limit)
-                    print("A new directory quota was created for path: " + fs_path)
-                    logging.info('A new directory quota was created for {}'.format(fs_path))
-            except qumulo.lib.request.RequestError as excpt:
-                if (excpt.status_code == 404):
-                    print ("Directory '" + fs_path + "' does not exist on destination...")
-                    logging.info('Directory {} does not exist on destination.'.format(fs_path))
+                if update_confirm == "y" or update_confirm == "Y" or update_confirm == "Yes" or update_confirm == "yes":
+                    rc.quota.update_quota(file_id, limit)
                 else:
-                    print ("Error: %s" % excpt)
-        print ()
-
+                    print("Directory quota for " + fs_path + " wasn't updated...")
+                    logging.info('Directory quota for {} wasn\'t updated.'.format(fs_path))
+            except: 
+                try:
+                    if approve == False:
+                        create_confirm = input("Do you want to create "+ fs_path +" directory quota?: [Y/n]")
+                    else:
+                        create_confirm = "Y"
+                        print("Directory quota for " + fs_path + " is being created...")
+                
+                    if create_confirm == "y" or create_confirm == "Y" or create_confirm == "Yes" or create_confirm == "yes": 
+                        rc.quota.create_quota(file_id, limit)
+                        print("A new directory quota was created for path: " + fs_path)
+                        logging.info('A new directory quota was created for {}'.format(fs_path))
+                except qumulo.lib.request.RequestError as excpt:
+                    if (excpt.status_code == 404):
+                        print ("Directory '" + fs_path + "' does not exist on destination...")
+                        logging.info('Directory {} does not exist on destination.'.format(fs_path))
+                    else:
+                        print ("Error: %s" % excpt)
+        except:
+            print(fs_path+"doesn't exist on the cluster!")
+            
 if __name__ == '__main__':
     main(sys.argv[1:])
-
