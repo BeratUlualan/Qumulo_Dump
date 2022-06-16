@@ -12,7 +12,7 @@ from getpass import getpass
 
 def main(argv):
     # Logging Details
-    logging.basicConfig(filename='quota.log', level=logging.INFO,
+    logging.basicConfig(filename='quotas.log', level=logging.INFO,
         format='%(asctime)s,%(levelname)s,%(message)s')
 
     # Argument Parameters Details 
