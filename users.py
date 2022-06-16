@@ -13,20 +13,20 @@ from getpass import getpass
 
 def main(argv):
     # Logging Details
-    logging.basicConfig(filename='qumulo_sync.log', level=logging.INFO,
+    logging.basicConfig(filename='users.log', level=logging.INFO,
         format='%(asctime)s,%(levelname)s,%(message)s')
 
     # Argument Parameters Details 
     err_msg = '''
-usage: qumulo_sync.py [-a|--auto_approve] [-d|--dump] [-s|--set] 
+usage: users.py [-a|--auto_approve] [-d|--dump] [-s|--set] 
 
-Dump or Set SMB settings and shares. 
+Dump or Set local users (without password). 
 
 optional arguments:
 -h, --help          Show this help message and exit
 -a, --auto_approve  Sync all existing settings without confirmation. If you want to use it, please put it before other arguments.
--d, --dump          Dump SMB settings and shares.
--s, --set           Sent SMB settings and shares.
+-d, --dump          Dump local users.
+-s, --set           Set local users.
     '''
     try:
         if len(sys.argv) > 1:
