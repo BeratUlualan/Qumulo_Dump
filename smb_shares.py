@@ -167,7 +167,6 @@ def smb_list(rc):
       
 
 def smb_define(rc, approve):
-    approve = False
     smb_json_file = open('smb.json','r')
     smb_json_data = smb_json_file.read()
     smb_json_object = json.loads(smb_json_data)
