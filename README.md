@@ -5,7 +5,7 @@ This script can help Qumulo customer who wants to dump an existing cluster setti
 ## Requirements and Setup
 - python 3.6+
 - Qumulo API Python bindings `pip install -r requirements.txt`
-- Qumulo cluster software version >= 4.1
+- Qumulo cluster software version >= 6.3.1.1
 
 ## How it works
 This script can help you to dump an existing cluster settings or set them on another Qumulo cluster.

@@ -9,11 +9,17 @@ import qumulo.rest
 import time
 import sys, getopt
 from getpass import getpass
+import jmespath
 
 def main(argv):
     # Logging Details
-    logging.basicConfig(filename='nfs.log', level=logging.INFO,
+    logging.basicConfig(filename='operation.log', level=logging.DEBUG,
         format='%(asctime)s,%(levelname)s,%(message)s')
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
 
     # Argument Parameters Details 
     err_msg = '''
@@ -36,8 +42,8 @@ optional arguments:
             sys.exit(2)
 
     except getopt.GetoptError:
-      print (err_msg)
-      sys.exit(2)
+        print (err_msg)
+        sys.exit(2)
     
     for opt, arg in opts:
         if opt in ("-h","--help"):
@@ -95,28 +101,54 @@ def login(cluster):
         username = input(cluster.capitalize() + " Username: ")
         password = getpass(cluster.capitalize() + "Password: ")
     
-    logging.info('Login credentials defined for {} - {}'.format(cluster_address, username))
+    logging.info(f'Login credentials defined for {cluster_address} - {username}')
 
     try:
         rc = RestClient(cluster_address, port)
         rc.login(username, password)
-        print ("Connection established with " + cluster_address)
-        logging.info('Connection established with {}'.format(cluster_address))
+        logging.info(f'Connection established with {cluster_address}')
 
         return (rc)
 
     except Exception as excpt:
-        logging.error('Connection issue with {}'.format(cluster_address))
-        print("Error connecting to %s cluster: %s" % cluster_address, excpt)
-        print(__doc__)
+        logging.error(f'Connection issue with {cluster_address}')
+        logging.error(f'Error: {excpt}')
         sys.exit(1)
 
+def get_tenant_name(rc, tenant_id):
+    tenants = rc.multitenancy.list_tenants()
+    for tenant in tenants:
+        if tenant_id == tenant.id:
+            return tenant.name
+
+def get_tenant_id(rc, tenant_name):
+    tenants = rc.multitenancy.list_tenants()
+    for tenant in tenants:
+        if tenant_name == tenant.name:
+            return tenant.id  
+
 def nfs_list(rc):
-    nfs_exports = rc.nfs.nfs_list_exports()
+    exports = rc.nfs.nfs_list_exports()['entries']
+    nfs_exports = []
+    count = 0
+    for export in exports:
+        export_details = {}
+        export_details = {
+            "export_path" : export['export_path'],
+            "tenant_name" : get_tenant_name(rc, export['tenant_id']),
+            "fs_path" : export['fs_path'],
+            "description" : export['description'],
+            "restrictions" : export['restrictions'],
+            "allow_fs_path_create" : True,
+            "fields_to_present_as_32_bit" : export['fields_to_present_as_32_bit']
+            }
+        nfs_exports.append(export_details)
+        logging.info(f'{export["export_path"]} configurations was listed')
+        count +=1
+    logging.info(f'Totally {count} NFS exports were added into the JSON file')
     nfs_json_file = open('nfs.json', 'w')
     json.dump(nfs_exports, nfs_json_file, indent=4)
     nfs_json_file.close()
-      
 
 def nfs_define(rc, approve):
     approve = False
@@ -125,24 +157,26 @@ def nfs_define(rc, approve):
     nfs_json_object = json.loads(nfs_json_data)
     
     nfs_exports = nfs_json_object
-    for x in range(len(nfs_exports)):
-        export_path = nfs_exports[x]['export_path']
-        fs_path = nfs_exports[x]['fs_path']
-        description = nfs_exports[x]['description']
+    count = 0
+    for export in nfs_exports:
+        export_path = export['export_path']
+        fs_path = export['fs_path']
+        description = export['description']
+        tenant_id = get_tenant_id(rc, export['tenant_name'])
         restrictions = []
-        for r in nfs_exports[x]['restrictions']:
+        for r in export['restrictions']:
             restrictions.append(qumulo.rest.nfs.NFSExportRestriction(r))
-        present_64_bit_fields_as_32_bit = nfs_exports[x]['present_64_bit_fields_as_32_bit']
-        if (present_64_bit_fields_as_32_bit == []):
-            present_64_bit_fields_as_32_bit = None
-        fields_to_present_as_32_bit = nfs_exports[x]['fields_to_present_as_32_bit']
+        fields_to_present_as_32_bit = export['fields_to_present_as_32_bit']
         if (fields_to_present_as_32_bit == []):
             fields_to_present_as_32_bit = None
 
-        try: 
-            rc.nfs.nfs_get_export(export_path)
-            print (export_path + " nfs export is already defined... ")
-            logging.info('{} NFS export is already defined.'.format(export_path))
+        nfs_exports = rc.nfs.nfs_list_exports()['entries']
+        existing_export = jmespath.search(
+            f"[?export_path == '{export_path}']", nfs_exports
+        )
+        if existing_export != []: 
+            export_id = existing_export[0]["id"]
+            logging.error(f'{export_path} NFS export is already defined.')
 
             if approve == False:
                 update_confirm = input("Do you want to update "+ export_path +" NFS export?: [Y/n]")
@@ -150,54 +184,42 @@ def nfs_define(rc, approve):
                 update_confirm = "Y"
                 print(export_path + " export configuration is being updated...")
 
-            if update_confirm == "y" or update_confirm == "Y" or update_confirm == "Yes" or update_confirm == "yes":
-                existing_export = rc.nfs.nfs_get_export(export_path=nfs_exports[x]['export_path'])
+            if update_confirm in ["y","Y","Yes","yes"]:
                 rc.nfs.nfs_modify_export(
-                    id_ = existing_export['id'],
+                    id_ = export_id,
+                    export_path = export_path,
+                    fs_path = fs_path,
+                    description = description,
+                    restrictions = restrictions, 
+                    tenant_id = tenant_id,
+                    allow_fs_path_create=False, 
+                    fields_to_present_as_32_bit=fields_to_present_as_32_bit
+                    )
+                logging.info(f'{export_path} export configuration was updated.')
+            else:
+                print(export_path + " export wasn't updated...")
+                logging.info(f'{export_path} export wasn\'t updated.')
+        
+        else:
+            if approve == False:
+                create_confirm = input("Do you want to create "+ export_path +" NFS export?: [Y/n]")
+            else:
+                create_confirm = "Y"
+                print(export_path + " export configuration is being created...")
+
+            if create_confirm in ["y","Y","Yes","yes"]:
+                rc.nfs.nfs_add_export(
                     export_path = export_path,
                     fs_path = fs_path,
                     description = description,
                     restrictions= restrictions, 
-                    allow_fs_path_create=False, 
-                    present_64_bit_fields_as_32_bit=present_64_bit_fields_as_32_bit, 
+                    tenant_id = tenant_id,
+                    allow_fs_path_create=True, 
                     fields_to_present_as_32_bit=fields_to_present_as_32_bit
                     )
-                logging.info('{} export configuration was updated.'.format(export_path))
-            else:
-                print(export_path + " export wasn't updated...")
-                logging.info('{} export wasn\'t updated.'.format(export_path))
-        
-        except:
-            try: 
-                if approve == False:
-                    create_confirm = input("Do you want to create "+ export_path +" NFS export?: [Y/n]")
-                else:
-                    create_confirm = "Y"
-                    print(export_path + " export configuration is being created...")
-
-                if create_confirm == "y" or create_confirm == "Y" or create_confirm == "Yes" or create_confirm == "yes":
-                    rc.nfs.nfs_add_export(
-                        export_path = export_path,
-                        fs_path = fs_path,
-                        description = description,
-                        restrictions= restrictions, 
-                        allow_fs_path_create=True, 
-                        #present_64_bit_fields_as_32_bit=present_64_bit_fields_as_32_bit, 
-                        fields_to_present_as_32_bit=fields_to_present_as_32_bit
-                        )
-                    print("A new NFS export was created for path:" + fs_path + " with export path: " + export_path)
-                    logging.info('{} export configuration was created.'.format(export_path))
-
-            except qumulo.lib.request.RequestError as excpt:
-                if (excpt.status_code == 404):
-                    print ("Directory '" + fs_path + "' does not exist on destination...")
-                    logging.info('Directory {} does not exist on destination.'.format(fs_path))
-
-                else:
-                    print ("Error: %s" % excpt)
-        print()
+                logging.info(f"A new NFS export was created for path: {fs_path} with export path: {export_path}")
+        count +=1
+    logging.info(f'Totally {count} NFS exports were added into the JSON file')
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-
-  

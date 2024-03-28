@@ -12,8 +12,13 @@ from getpass import getpass
 
 def main(argv):
     # Logging Details
-    logging.basicConfig(filename='quotas.log', level=logging.INFO,
+    logging.basicConfig(filename='operation.log', level=logging.DEBUG,
         format='%(asctime)s,%(levelname)s,%(message)s')
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
 
     # Argument Parameters Details 
     err_msg = '''
@@ -36,8 +41,8 @@ optional arguments:
             sys.exit(2)
 
     except getopt.GetoptError:
-      print (err_msg)
-      sys.exit(2)
+        print (err_msg)
+        sys.exit(2)
     
     for opt, arg in opts:
         if opt in ("-h","--help"):
@@ -95,20 +100,18 @@ def login(cluster):
         username = input(cluster.capitalize() + " Username: ")
         password = getpass(cluster.capitalize() + "Password: ")
     
-    logging.info('Login credentials defined for {} - {}'.format(cluster_address, username))
+    logging.info(f'Login credentials defined for {cluster_address} - {username}')
     
     try:
         rc = RestClient(cluster_address, port)
         rc.login(username, password)
-        print ("Connection established with " + cluster_address)
-        logging.info('Connection established with {}'.format(cluster_address))
+        logging.info(f'Connection established with {cluster_address}')
         
-        return (rc)
+        return rc
 
     except Exception as excpt:
-        logging.error('Connection issue with {}'.format(cluster_address))
-        print("Error connecting to %s cluster: %s" % cluster_address, excpt)
-        print(__doc__)
+        logging.error(f'Connection issue with {cluster_address}')
+        logging.error(f'Error: {excpt}')
         sys.exit(1)
         
 def quota_list(rc):
@@ -116,6 +119,7 @@ def quota_list(rc):
     quota_json_file = open('quotas.json', 'w')
     json.dump(quotas, quota_json_file, indent=4)
     quota_json_file.close()
+    logging.info(f'Totally {len(quotas)} directory quotas were added into the JSON file')
     
 def quota_define(rc, approve):
     approve = False
@@ -132,21 +136,20 @@ def quota_define(rc, approve):
             try:
                 rc.quota.get_quota(file_id)
                 print ("Quota for "+ fs_path + " is already defined... ")
-                logging.info('{} quota is already defined.'.format(fs_path))
+                logging.info(f'{fs_path} quota is already defined.')
                 if approve == False:
                     update_confirm = input("Do you want to update "+ fs_path +" directory quota?: [Y/n]")
                 else:
                     update_confirm = "Y"
                     print("Directory quota for " + fs_path + " is being updated...")
-                    logging.info('Directory quota for {} was updated succesfully.'.format(fs_path))
+                    logging.info(f'Directory quota for {fs_path} was updated succesfully.')
             
-                if update_confirm == "y" or update_confirm == "Y" or update_confirm == "Yes" or update_confirm == "yes":
+                if update_confirm in ["y","Y","Yes","yes"]:
                     rc.quota.update_quota(file_id, limit)
                 else:
                     print("Directory quota for " + fs_path + " wasn't updated...")
-                    logging.info('Directory quota for {} wasn\'t updated.'.format(fs_path))
+                    logging.info(f'Directory quota for {fs_path} wasn\'t updated.')
             except: 
-                try:
                     if approve == False:
                         create_confirm = input("Do you want to create "+ fs_path +" directory quota?: [Y/n]")
                     else:
@@ -155,16 +158,24 @@ def quota_define(rc, approve):
                 
                     if create_confirm == "y" or create_confirm == "Y" or create_confirm == "Yes" or create_confirm == "yes": 
                         rc.quota.create_quota(file_id, limit)
-                        print("A new directory quota was created for path: " + fs_path)
-                        logging.info('A new directory quota was created for {}'.format(fs_path))
-                except qumulo.lib.request.RequestError as excpt:
-                    if (excpt.status_code == 404):
-                        print ("Directory '" + fs_path + "' does not exist on destination...")
-                        logging.info('Directory {} does not exist on destination.'.format(fs_path))
-                    else:
-                        print ("Error: %s" % excpt)
-        except:
-            print(fs_path+"doesn't exist on the cluster!")
+                        logging.info(f'A new directory quota was created for {fs_path}')
+
+        except qumulo.lib.request.RequestError as excpt:
+            if (excpt.status_code == 404):
+                print (f"Directory {fs_path} does not exist on the cluster.")
+                logging.info(f'Directory {fs_path} does not exist on destination.')
+                create_dir = input("Do you want to create"+ fs_path +" directory?: [Y/n]")
+                if create_dir in ['y','Y','Yes','yes']:
+                    fs_path_splitted = fs_path.split("/")
+                    name = fs_path_splitted[-2]
+                    path = '/'.join(fs_path_splitted[:-2])
+                    if path == "":
+                        path = "/"
+                    rc.fs.create_directory(dir_path=path, name=name)
+                    file_id = rc.fs.get_file_attr(fs_path)['id']
+                    rc.quota.create_quota(file_id, limit)
+            else:
+                print ("Error: %s" % excpt)
             
 if __name__ == '__main__':
     main(sys.argv[1:])
