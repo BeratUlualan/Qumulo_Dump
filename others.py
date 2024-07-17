@@ -71,6 +71,9 @@ def login(cluster):
     port = ""
     username = ""
     password = ""
+    top_dir = ""
+
+
 
     if path.exists('credentials.json') == True:
         json_file = open('credentials.json','r')
@@ -92,6 +95,10 @@ def login(cluster):
         password = json_object[cluster]['password']
         if password == "":
             password = getpass(cluster.capitalize() +  " Password: ")
+
+
+                
+
 
     else:
         print()
@@ -134,6 +141,13 @@ def others_list(rc):
     json.dump(ntp, ntp_json_file, indent=4)
     ntp_json_file.close()
     logging.info(f'The NTP configurations were added into the JSON file')
+
+    ########### REPLICATION ###########
+    replications = rc.replication.list_source_relationship_statuses()
+    replication_json_file = open('replication.json', 'w')
+    json.dump(replications, replication_json_file, indent=4)
+    replication_json_file.close()
+    logging.info(f'The replication configurations were added into the JSON file')
     
     ########### LDAP ########### 
     ldap=rc.ldap.settings_get_v2()
@@ -207,6 +221,25 @@ def others_define(rc, approve):
         logging.info(f'The NTP configurations are done.')
     except Exception as excpt:
         logging.error(f'Error: {excpt}')
+
+    ########### REPLICATION ###########
+    replication_json_file = open('replication.json', 'r')
+    replication_json_data = replication_json_file.read()
+    replications = json.loads(replication_json_data)
+    top_dir = input(cluster.capitalize() +  " top directory path for replications: ")
+    for replication in replications:
+        source_path = replication['source_root_path']
+        target_path = f"{top_dir}{replication['target_root_path']}"
+        address = replication['target_address']
+        port = replication['target_port']
+        map_nfs = replication['map_local_ids_to_nfs_ids']
+        rep_mode = replication['replication_mode']
+        snapshot_policies = replication['snapshot_policies']
+        rc.replication.create_source_relationship(target_path=target_path, address=address, source_path=source_path, map_local_ids_to_nfs_ids= map_nfs, 
+            target_port=port, replication_mode=rep_mode, snapshot_policies=snapshot_policies)
+
+
+    logging.info(f'The replication configurations were added into the JSON file')
         
     ########### NETWORK ########### 
     network_json_file = open('network.json','r')
